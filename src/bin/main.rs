@@ -38,7 +38,7 @@ fn run_prompt() {
 }
 
 fn run(src: String) {
-    let tokens = scanner::scan_tokens(src);
+    let tokens = scanner::scan_tokens(src).unwrap_or_else(|| Vec::new());
     for token in &tokens {
         println!("{}", token);
     }

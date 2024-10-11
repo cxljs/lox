@@ -1,18 +1,23 @@
 use crate::error;
 use crate::token::{self, Token, Type};
 
+// Scanner transforms the source code into a list of tokens.
 struct Scanner {
     src: String,
     start: usize,
     cur: usize,
     line: u32,
     tokens: Vec<Token>,
+    has_err: bool,
 }
 
-pub fn scan_tokens(src: String) -> Vec<Token> {
+pub fn scan_tokens(src: String) -> Option<Vec<Token>> {
     let mut scanner = Scanner::new(src);
     scanner.scan();
-    scanner.tokens
+    if scanner.has_err {
+        return None;
+    }
+    Some(scanner.tokens)
 }
 
 impl Scanner {
@@ -23,6 +28,7 @@ impl Scanner {
             cur: 0,
             line: 1,
             tokens: Vec::new(),
+            has_err: false,
         }
     }
 
@@ -39,7 +45,7 @@ impl Scanner {
 
     fn scan_next(&mut self) {
         let c = self.advance();
-        match c {
+        match c as char {
             '(' => self.add_token(Type::LeftParen),
             ')' => self.add_token(Type::RightParen),
             '{' => self.add_token(Type::LeftBrace),
@@ -90,7 +96,8 @@ impl Scanner {
                 } else if is_alpha(c) {
                     self.identifier();
                 } else {
-                    error::error(self.line, "unexpected character.");
+                    error::error(self.line, format!("Unexpected character: {}", c).as_str());
+                    self.has_err = true;
                 }
             }
         }
@@ -101,30 +108,30 @@ impl Scanner {
     }
 
     fn advance(&mut self) -> char {
-        let ch = self.src.chars().nth(self.cur).unwrap();
+        let ch = self.src.bytes().nth(self.cur).unwrap();
         self.cur += 1;
-        ch
+        ch as char
     }
 
     fn peek(&self) -> char {
         if self.end() {
             return '\0';
         }
-        self.src.chars().nth(self.cur).unwrap()
+        self.src.bytes().nth(self.cur).unwrap() as char
     }
 
     fn peek_next(&self) -> char {
         if self.cur + 1 >= self.src.len() {
             return '\0';
         }
-        self.src.chars().nth(self.cur + 1).unwrap()
+        self.src.bytes().nth(self.cur + 1).unwrap() as char
     }
 
     fn r#match(&mut self, expected: char) -> bool {
         if self.end() {
             return false;
         }
-        if self.src.chars().nth(self.cur).unwrap() != expected {
+        if self.src.bytes().nth(self.cur).unwrap() as char != expected {
             return false;
         }
         self.cur += 1;
@@ -141,7 +148,7 @@ impl Scanner {
         }
 
         if self.end() {
-            error::error(self.line, "unterminated string");
+            error::error(self.line, "Unterminated string.");
             return;
         }
 
