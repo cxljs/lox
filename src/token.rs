@@ -93,13 +93,30 @@ impl Token {
     }
 }
 
+// add the boring func in order to keep consistent with the test cases of the book <crafting interpreter>.
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Type::LeftParen => write!(f, "LEFT_PAREN"),
+            Type::RightParen => write!(f, "RIGHT_PAREN"),
+            Type::LeftBrace => write!(f, "LEFT_BRACE"),
+            Type::RightBrace => write!(f, "RIGHT_BRACE"),
+            Type::BangEqual => write!(f, "BANG_EQUAL"),
+            Type::EqualEqual => write!(f, "EQUAL_EQUAL"),
+            Type::GreaterEqual => write!(f, "GREATER_EQUAL"),
+            Type::LessEqual => write!(f, "LESS_EQUAL"),
+            _ => write!(f, "{:?}", self),
+        }
+    }
+}
+
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.t {
-            Type::STRING { literal } => write!(f, "String {} {}", &self.lexeme, literal),
-            Type::NUMBER { literal } => write!(f, "Number {} {}", &self.lexeme, literal),
+            Type::STRING { literal } => write!(f, "STRING {} {}", &self.lexeme, literal),
+            Type::NUMBER { literal } => write!(f, "NUMBER {} {:?}", &self.lexeme, literal),
             Type::EOF => write!(f, "EOF null"),
-            _ => write!(f, "{:?} {} null", self.t, &self.lexeme),
+            _ => write!(f, "{} {} null", self.t, &self.lexeme),
         }
     }
 }
