@@ -1,7 +1,13 @@
 use crate::error;
-use crate::token::{self, Token, Type};
+use crate::token::{self, Token, TokenType};
 
-// Scanner transforms the source code into a list of tokens.
+// the Lox language defines the lexical grammar:
+//   NUMBER -> DIGIT+ ("." DIGIT+)? ;
+//   STRING -> "\"" <any char except "\"">* "\"" ;
+//   IDENTIFIER -> ALPHA (ALPHA | DIGIT)* ;
+//   ALPHA -> "a"..."z" |  "A"..."Z" | "_" ;
+//   DIGIT -> "0"..."9" ;
+// Scanner uses the lexical grammar to transform the source code into tokens.
 struct Scanner {
     src: String,
     start: usize,
@@ -38,7 +44,7 @@ impl Scanner {
             self.scan_next();
         }
         self.tokens
-            .push(Token::new(token::Type::EOF, "", self.line));
+            .push(Token::new(token::TokenType::EOF, "", self.line));
 
         &self.tokens
     }
@@ -46,31 +52,31 @@ impl Scanner {
     fn scan_next(&mut self) {
         let c = self.advance();
         match c as char {
-            '(' => self.add_token(Type::LeftParen),
-            ')' => self.add_token(Type::RightParen),
-            '{' => self.add_token(Type::LeftBrace),
-            '}' => self.add_token(Type::RightBrace),
-            ',' => self.add_token(Type::COMMA),
-            '.' => self.add_token(Type::DOT),
-            '-' => self.add_token(Type::MINUS),
-            '+' => self.add_token(Type::PLUS),
-            ';' => self.add_token(Type::SEMICOLON),
-            '*' => self.add_token(Type::STAR),
+            '(' => self.add_token(TokenType::LeftParen),
+            ')' => self.add_token(TokenType::RightParen),
+            '{' => self.add_token(TokenType::LeftBrace),
+            '}' => self.add_token(TokenType::RightBrace),
+            ',' => self.add_token(TokenType::COMMA),
+            '.' => self.add_token(TokenType::DOT),
+            '-' => self.add_token(TokenType::MINUS),
+            '+' => self.add_token(TokenType::PLUS),
+            ';' => self.add_token(TokenType::SEMICOLON),
+            '*' => self.add_token(TokenType::STAR),
             '!' => match self.r#match('=') {
-                true => self.add_token(Type::BangEqual),
-                false => self.add_token(Type::BANG),
+                true => self.add_token(TokenType::BangEqual),
+                false => self.add_token(TokenType::BANG),
             },
             '=' => match self.r#match('=') {
-                true => self.add_token(Type::EqualEqual),
-                false => self.add_token(Type::EQUAL),
+                true => self.add_token(TokenType::EqualEqual),
+                false => self.add_token(TokenType::EQUAL),
             },
             '<' => match self.r#match('=') {
-                true => self.add_token(Type::LessEqual),
-                false => self.add_token(Type::LESS),
+                true => self.add_token(TokenType::LessEqual),
+                false => self.add_token(TokenType::LESS),
             },
             '>' => match self.r#match('=') {
-                true => self.add_token(Type::GreaterEqual),
-                false => self.add_token(Type::GREATER),
+                true => self.add_token(TokenType::GreaterEqual),
+                false => self.add_token(TokenType::GREATER),
             },
             '/' => match self.r#match('/') {
                 true => {
@@ -80,7 +86,7 @@ impl Scanner {
                         self.advance();
                     }
                 }
-                false => self.add_token(Type::SLASH),
+                false => self.add_token(TokenType::SLASH),
             },
             ' ' | '\r' | '\t' => (), // ignore whitespace
             '\n' => {
@@ -96,7 +102,7 @@ impl Scanner {
                 } else if is_alpha(c) {
                     self.identifier();
                 } else {
-                    error::error(self.line, format!("Unexpected character: {}", c).as_str());
+                    error::scan_error(self.line, format!("Unexpected character: {}", c).as_str());
                     self.has_err = true;
                 }
             }
@@ -148,7 +154,7 @@ impl Scanner {
         }
 
         if self.end() {
-            error::error(self.line, "Unterminated string.");
+            error::scan_error(self.line, "Unterminated string.");
             return;
         }
 
@@ -157,7 +163,7 @@ impl Scanner {
 
         // trim the surrounding quotes.
         let literal = self.src.get(self.start + 1..self.cur - 1).unwrap();
-        self.add_token(Type::STRING {
+        self.add_token(TokenType::STRING {
             literal: literal.to_string(),
         });
     }
@@ -181,7 +187,7 @@ impl Scanner {
             .unwrap()
             .parse::<f64>()
             .unwrap();
-        self.add_token(Type::NUMBER { literal: num });
+        self.add_token(TokenType::NUMBER { literal: num });
     }
 
     fn identifier(&mut self) {
@@ -189,10 +195,10 @@ impl Scanner {
             self.advance();
         }
         let lexeme = self.src.get(self.start..self.cur).unwrap();
-        self.add_token(Type::keyword_or_id(lexeme));
+        self.add_token(TokenType::keyword_or_id(lexeme));
     }
 
-    fn add_token(&mut self, t: Type) {
+    fn add_token(&mut self, t: TokenType) {
         let lexeme = self.src.get(self.start..self.cur).unwrap();
         self.tokens.push(Token::new(t, lexeme, self.line));
     }
