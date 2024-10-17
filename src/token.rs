@@ -26,7 +26,7 @@ pub enum TokenType {
     LessEqual,
 
     // Literals.
-    // bool, nil 也是字面量，但是这里把它们看成关键字
+    // bool, nil 也能当字面量处理，这里把它们看成关键字
     IDENTIFIER,
     STRING { literal: String },
     NUMBER { literal: f64 }, // all numbers in Lox are floating point at runtime.
