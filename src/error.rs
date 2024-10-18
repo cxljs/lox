@@ -19,8 +19,14 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::ParseError(token, msg) => match token.t {
-                TokenType::EOF => Ok(report(token.line, " at end", msg)),
-                _ => Ok(report(token.line, &format!(" at '{}'", &token.lexeme), msg)),
+                TokenType::EOF => write!(f, "[line {}] Error{}: {}", token.line, " at end", msg),
+                _ => write!(
+                    f,
+                    "[line {}] Error{}: {}",
+                    token.line,
+                    &format!(" at '{}'", &token.lexeme),
+                    msg
+                ),
             },
             Error::RuntimeError(token, msg) => write!(f, "{}\n[line {}]", msg, token.line),
         }

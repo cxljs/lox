@@ -33,7 +33,7 @@ impl Interpreter {
         for stmt in stmts {
             if let Some(e) = self.execute(stmt) {
                 // runtime error, interpreter will print it.
-                println!("{}", e);
+                eprintln!("{}", e);
             }
         }
     }

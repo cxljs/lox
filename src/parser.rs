@@ -27,7 +27,7 @@ impl Parser {
                 Ok(stmt) => stmts.push(stmt),
                 Err(e) => {
                     // parse error, compiler/interpreter will print it.
-                    print!("{}", e);
+                    eprintln!("{}", e);
                     errors.push(e);
                     self.synchronize();
                 }
