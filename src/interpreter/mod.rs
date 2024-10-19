@@ -75,6 +75,18 @@ impl Interpreter {
                 self.env = previous;
                 res
             }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if self.eval(condition)?.is_truthy() {
+                    self.execute(*then_branch)?;
+                } else if let Some(else_branch) = else_branch {
+                    self.execute(*else_branch)?;
+                }
+                Ok(())
+            }
             _ => todo!(),
         }
     }

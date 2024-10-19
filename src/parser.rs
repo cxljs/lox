@@ -73,6 +73,7 @@ impl Parser {
         match self.peek().t {
             TokenType::PRINT => self.print_stmt(),
             TokenType::LeftBrace => self.block(),
+            TokenType::IF => self.if_stmt(),
             _ => self.expr_stmt(),
         }
     }
@@ -97,6 +98,24 @@ impl Parser {
         self.consume(TokenType::RightBrace, "Expect '}' after block.")?;
 
         Ok(Stmt::Block { stmts })
+    }
+
+    // ifStmt -> "if" "(" expression ")" statement ( "else" statement )? ;
+    fn if_stmt(&mut self) -> Result<Stmt, Error> {
+        self.consume(TokenType::IF, "Expect keyword 'if'.")?;
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expect ')' after if condition.")?;
+        let then_branch = self.statement()?;
+        let else_branch = match self.r#match(&[TokenType::ELSE]) {
+            true => Some(Box::new(self.statement()?)),
+            false => None,
+        };
+        Ok(Stmt::If {
+            condition,
+            then_branch: Box::new(then_branch),
+            else_branch,
+        })
     }
 
     // exprStmt -> expression ";" ;

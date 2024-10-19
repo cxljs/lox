@@ -126,7 +126,7 @@ pub enum Stmt {
     If {
         condition: Expr,
         then_branch: Box<Stmt>,
-        else_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
     },
     Print {
         expr: Expr,
