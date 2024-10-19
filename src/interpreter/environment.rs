@@ -52,17 +52,17 @@ impl Environment {
         ))
     }
 
-    pub fn assign(&mut self, name: Token, value: Value) -> Option<Error> {
+    pub fn assign(&mut self, name: Token, value: Value) -> Result<(), Error> {
         if self.cur.contains_key(&name.lexeme) {
             self.cur.insert(name.lexeme, value);
-            return None;
+            return Ok(());
         }
 
         if let Some(outer) = self.outer_layer.as_mut() {
             return outer.borrow_mut().assign(name, value);
         }
 
-        Some(Error::RuntimeError(
+        Err(Error::RuntimeError(
             name.clone(),
             format!("Undefined variable '{}'.", &name.lexeme),
         ))

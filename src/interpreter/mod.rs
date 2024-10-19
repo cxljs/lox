@@ -31,44 +31,44 @@ impl Interpreter {
 
     fn interpret(&mut self, stmts: Vec<Stmt>) {
         for stmt in stmts {
-            if let Some(e) = self.execute(stmt) {
+            if let Err(e) = self.execute(stmt) {
                 // runtime error, interpreter will print it.
                 eprintln!("{}", e);
             }
         }
     }
 
-    fn execute(&mut self, stmt: Stmt) -> Option<Error> {
+    fn execute(&mut self, stmt: Stmt) -> Result<(), Error> {
         match stmt {
             Stmt::Expression { expr } => match self.eval(expr) {
-                Ok(_) => None,
-                Err(e) => Some(e),
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
             },
             Stmt::Print { expr } => match self.eval(expr) {
                 Ok(value) => {
                     println!("{}", value);
-                    None
+                    Ok(())
                 }
-                Err(e) => Some(e),
+                Err(e) => Err(e),
             },
             Stmt::Var { name, initializer } => {
                 let value = match initializer {
                     Some(expr) => match self.eval(expr) {
                         Ok(value) => value,
-                        Err(e) => return Some(e),
+                        Err(e) => return Err(e),
                     },
                     None => Value::Nil,
                 };
                 self.env.borrow_mut().define(name.lexeme, value);
-                None
+                Ok(())
             }
             Stmt::Block { stmts } => {
                 let previous = self.env.clone();
-                let mut res = None;
+                let mut res = Ok(());
                 self.env = Rc::new(RefCell::new(Environment::from(&self.env)));
                 for stmt in stmts {
-                    if let Some(e) = self.execute(*stmt) {
-                        res = Some(e);
+                    if let Err(e) = self.execute(*stmt) {
+                        res = Err(e);
                         break;
                     }
                 }
@@ -180,10 +180,8 @@ impl Interpreter {
     fn eval_assign(&mut self, expr: Expr) -> Result<Value, Error> {
         if let Expr::Assign { name, value } = expr {
             let value = self.eval(*value)?;
-            match self.env.borrow_mut().assign(name, value.clone()) {
-                None => return Ok(value),
-                Some(e) => return Err(e),
-            }
+            self.env.borrow_mut().assign(name, value.clone())?;
+            return Ok(value);
         }
         unreachable!()
     }
