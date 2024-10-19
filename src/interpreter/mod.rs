@@ -99,6 +99,7 @@ impl Interpreter {
             Expr::Binary { .. } => self.eval_binary(expr),
             Expr::Variable { .. } => self.eval_variable(expr),
             Expr::Assign { .. } => self.eval_assign(expr),
+            Expr::Logical { .. } => self.eval_logical(expr),
             _ => todo!(),
         }
     }
@@ -194,6 +195,31 @@ impl Interpreter {
             let value = self.eval(*value)?;
             self.env.borrow_mut().assign(name, value.clone())?;
             return Ok(value);
+        }
+        unreachable!()
+    }
+
+    // Lox 对 logical or/and 的语义和常见语言不同，比如:
+    // - print "hi" or 2;
+    //   常见语言: print true
+    //   Lox: print "hi"
+    // - print nil or "yes";
+    //   常见语言: print true
+    //   Lox: print "yes"
+    fn eval_logical(&mut self, expr: Expr) -> Result<Value, Error> {
+        if let Expr::Logical { left, op, right } = expr {
+            let left = self.eval(*left)?;
+            if op.t == TokenType::OR {
+                if left.is_truthy() {
+                    return Ok(left);
+                }
+            } else {
+                // op.t == TokenType::AND
+                if !left.is_truthy() {
+                    return Ok(left);
+                }
+            }
+            return self.eval(*right);
         }
         unreachable!()
     }

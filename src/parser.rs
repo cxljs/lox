@@ -134,7 +134,7 @@ impl Parser {
     // logic_or -> logic_and ( "or" logic_and )* ;
     // logic_and -> equality ( "and" equality )* ;
     fn assignment(&mut self) -> Result<Expr, Error> {
-        let expr = self.equality()?;
+        let expr = self.logical_or()?;
 
         if self.r#match(&[TokenType::EQUAL]) {
             let equal = self.previous();
@@ -155,6 +155,34 @@ impl Parser {
             }
         }
 
+        Ok(expr)
+    }
+
+    fn logical_or(&mut self) -> Result<Expr, Error> {
+        let mut expr = self.logical_and()?;
+        while self.r#match(&[TokenType::OR]) {
+            let op = self.previous();
+            let right = self.logical_and()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn logical_and(&mut self) -> Result<Expr, Error> {
+        let mut expr = self.equality()?;
+        while self.r#match(&[TokenType::AND]) {
+            let op = self.previous();
+            let right = self.equality()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
+        }
         Ok(expr)
     }
 
