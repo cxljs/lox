@@ -30,7 +30,7 @@ impl Interpreter {
     }
 
     fn interpret(&mut self, stmts: Vec<Stmt>) {
-        for stmt in stmts {
+        for stmt in &stmts {
             if let Err(e) = self.execute(stmt) {
                 // runtime error, interpreter will print it.
                 eprintln!("{}", e);
@@ -38,7 +38,7 @@ impl Interpreter {
         }
     }
 
-    fn execute(&mut self, stmt: Stmt) -> Result<(), Error> {
+    fn execute(&mut self, stmt: &Stmt) -> Result<(), Error> {
         match stmt {
             Stmt::Expression { expr } => match self.eval(expr) {
                 Ok(_) => Ok(()),
@@ -59,7 +59,7 @@ impl Interpreter {
                     },
                     None => Value::Nil,
                 };
-                self.env.borrow_mut().define(name.lexeme, value);
+                self.env.borrow_mut().define(name.lexeme.clone(), value);
                 Ok(())
             }
             Stmt::Block { stmts } => {
@@ -67,7 +67,7 @@ impl Interpreter {
                 let mut res = Ok(());
                 self.env = Rc::new(RefCell::new(Environment::from(&self.env)));
                 for stmt in stmts {
-                    if let Err(e) = self.execute(*stmt) {
+                    if let Err(e) = self.execute(&*stmt) {
                         res = Err(e);
                         break;
                     }
@@ -81,9 +81,15 @@ impl Interpreter {
                 else_branch,
             } => {
                 if self.eval(condition)?.is_truthy() {
-                    self.execute(*then_branch)?;
+                    self.execute(&*then_branch)?;
                 } else if let Some(else_branch) = else_branch {
-                    self.execute(*else_branch)?;
+                    self.execute(&*else_branch)?;
+                }
+                Ok(())
+            }
+            Stmt::While { condition, body } => {
+                while self.eval(condition)?.is_truthy() {
+                    self.execute(&*body)?;
                 }
                 Ok(())
             }
@@ -91,10 +97,10 @@ impl Interpreter {
         }
     }
 
-    fn eval(&mut self, expr: Expr) -> Result<Value, Error> {
+    fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal { .. } => self.eval_literal(expr),
-            Expr::Grouping { expression } => self.eval(*expression),
+            Expr::Grouping { expression } => self.eval(&*expression),
             Expr::Unary { .. } => self.eval_unary(expr),
             Expr::Binary { .. } => self.eval_binary(expr),
             Expr::Variable { .. } => self.eval_variable(expr),
@@ -104,7 +110,7 @@ impl Interpreter {
         }
     }
 
-    fn eval_literal(&mut self, expr: Expr) -> Result<Value, Error> {
+    fn eval_literal(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Literal { value } = expr {
             match &value.t {
                 TokenType::TRUE => return Ok(Value::Bool(true)),
@@ -123,9 +129,9 @@ impl Interpreter {
         unreachable!()
     }
 
-    fn eval_unary(&mut self, expr: Expr) -> Result<Value, Error> {
+    fn eval_unary(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Unary { op, right } = expr {
-            let right = self.eval(*right)?;
+            let right = self.eval(&*right)?;
             match (&op.t, &right) {
                 (TokenType::MINUS, Value::Number(num)) => return Ok(Value::Number(-num)),
                 (TokenType::BANG, _) => return Ok(Value::Bool(!right.is_truthy())),
@@ -140,10 +146,10 @@ impl Interpreter {
         unreachable!()
     }
 
-    fn eval_binary(&mut self, expr: Expr) -> Result<Value, Error> {
+    fn eval_binary(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Binary { left, op, right } = expr {
-            let left = self.eval(*left)?;
-            let right = self.eval(*right)?;
+            let left = self.eval(&*left)?;
+            let right = self.eval(&*right)?;
             match &op.t {
                 TokenType::MINUS => match left - right {
                     Ok(res) => return Ok(res),
@@ -183,17 +189,17 @@ impl Interpreter {
         unreachable!()
     }
 
-    fn eval_variable(&self, expr: Expr) -> Result<Value, Error> {
+    fn eval_variable(&self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Variable { name } = expr {
             return self.env.borrow_mut().get(&name);
         }
         unreachable!()
     }
 
-    fn eval_assign(&mut self, expr: Expr) -> Result<Value, Error> {
+    fn eval_assign(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Assign { name, value } = expr {
-            let value = self.eval(*value)?;
-            self.env.borrow_mut().assign(name, value.clone())?;
+            let value = self.eval(&*value)?;
+            self.env.borrow_mut().assign(name.clone(), value.clone())?;
             return Ok(value);
         }
         unreachable!()
@@ -206,9 +212,9 @@ impl Interpreter {
     // - print nil or "yes";
     //   常见语言: print true
     //   Lox: print "yes"
-    fn eval_logical(&mut self, expr: Expr) -> Result<Value, Error> {
+    fn eval_logical(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Logical { left, op, right } = expr {
-            let left = self.eval(*left)?;
+            let left = self.eval(&*left)?;
             if op.t == TokenType::OR {
                 if left.is_truthy() {
                     return Ok(left);
@@ -219,7 +225,7 @@ impl Interpreter {
                     return Ok(left);
                 }
             }
-            return self.eval(*right);
+            return self.eval(&*right);
         }
         unreachable!()
     }

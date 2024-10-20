@@ -74,6 +74,8 @@ impl Parser {
             TokenType::PRINT => self.print_stmt(),
             TokenType::LeftBrace => self.block(),
             TokenType::IF => self.if_stmt(),
+            TokenType::WHILE => self.while_stmt(),
+            TokenType::FOR => self.for_stmt(),
             _ => self.expr_stmt(),
         }
     }
@@ -93,7 +95,7 @@ impl Parser {
         let mut stmts = Vec::new();
 
         while !self.end() && !self.check(&TokenType::RightBrace) {
-            stmts.push(Box::new(self.declaration()?));
+            stmts.push(self.declaration()?);
         }
         self.consume(TokenType::RightBrace, "Expect '}' after block.")?;
 
@@ -116,6 +118,82 @@ impl Parser {
             then_branch: Box::new(then_branch),
             else_branch,
         })
+    }
+
+    // whileStmt -> "while" "(" expression ")" statement ;
+    fn while_stmt(&mut self) -> Result<Stmt, Error> {
+        self.consume(TokenType::WHILE, "Expect keyword 'while'.")?;
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expect ')' after condition.")?;
+        let body = self.statement()?;
+        Ok(Stmt::While {
+            condition,
+            body: Box::new(body),
+        })
+    }
+
+    // forStmt -> "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement ;
+    fn for_stmt(&mut self) -> Result<Stmt, Error> {
+        self.consume(TokenType::FOR, "Expect keyword 'for'.")?;
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.")?;
+
+        let init = match self.peek().t {
+            TokenType::SEMICOLON => {
+                self.advance();
+                None
+            }
+            TokenType::VAR => Some(self.var_decl()?),
+            _ => Some(self.expr_stmt()?),
+        };
+
+        let condition = match self.peek().t {
+            TokenType::SEMICOLON => None,
+            _ => Some(self.expression()?),
+        };
+        self.consume(TokenType::SEMICOLON, "Expect ';' after loop condition.")?;
+
+        let increment = match self.peek().t {
+            TokenType::RightParen => None,
+            _ => Some(self.expression()?),
+        };
+        self.consume(TokenType::RightParen, "Expect ')' after for clauses.")?;
+
+        let mut body = self.statement()?;
+
+        // 不定义`Stmt:For`, 而是把`for`看成`while`的语法糖, 所以这个函数返回`Stmt::While` or `Stmt::Block`.
+        // for (init; condition; increment) body 等价于
+        // init;
+        // while (condition) {body; increment;}
+        if increment.is_some() {
+            body = Stmt::Block {
+                stmts: vec![
+                    body,
+                    Stmt::Expression {
+                        expr: increment.unwrap(),
+                    },
+                ],
+            };
+        }
+
+        body = Stmt::While {
+            condition: condition.unwrap_or(Expr::Literal {
+                value: Token {
+                    t: TokenType::TRUE,
+                    lexeme: String::new(),
+                    line: 0,
+                },
+            }),
+            body: Box::new(body),
+        };
+
+        if init.is_some() {
+            body = Stmt::Block {
+                stmts: vec![init.unwrap(), body],
+            };
+        }
+
+        Ok(body)
     }
 
     // exprStmt -> expression ";" ;

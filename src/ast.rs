@@ -71,7 +71,7 @@ pub enum Expr {
     Call {
         callee: Box<Expr>,
         paren: Token,
-        args: Vec<Box<Expr>>,
+        args: Vec<Expr>,
     },
     // logical and/or
     Logical {
@@ -81,7 +81,7 @@ pub enum Expr {
     },
     // variable access expressions
     Variable {
-        name: Token,
+        name: Token, // TokenType is IDENTIFIER
     },
     // class property access
     Get {
@@ -108,12 +108,12 @@ pub enum Expr {
 // Stmt = a list of Exprs(and Tokens)
 pub enum Stmt {
     Block {
-        stmts: Vec<Box<Stmt>>,
+        stmts: Vec<Stmt>,
     },
     Class {
         name: Token,
-        super_class: Expr,       // Expr::Variable
-        methods: Vec<Box<Stmt>>, // Stmt::Function
+        super_class: Expr,  // Expr::Variable
+        methods: Vec<Stmt>, // Stmt::Function
     },
     Expression {
         expr: Expr,
@@ -121,7 +121,7 @@ pub enum Stmt {
     Function {
         name: Token,
         params: Vec<Token>,
-        body: Vec<Box<Stmt>>,
+        body: Vec<Stmt>,
     },
     If {
         condition: Expr,
