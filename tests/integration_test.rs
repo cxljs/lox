@@ -74,53 +74,35 @@ fn path(path: &str) -> String {
     format!("{}/tests/cases/{}", env!("CARGO_MANIFEST_DIR"), path)
 }
 
-fn get_test_cases() -> Option<Vec<String>> {
-    let cases = &[
-        "assignment",
-        "block",
-        "bool",
-        "comments",
-        "expressions",
-        "logical_operator",
-        "nil",
-        "operator",
-        "print",
-        "scanning",
-        "string",
-        "variable",
-    ];
+fn get_test_cases(case_dir: &str) -> Option<Vec<String>> {
     let mut res = Vec::new();
 
-    for case in cases {
-        let path = PathBuf::from(path(case));
-        for d in fs::read_dir(path).ok()? {
-            let d = d.ok()?;
-            if d.metadata().ok()?.is_file() {
-                if let Ok(name) = d.file_name().into_string() {
-                    res.push(format!("{}/{}", case, name));
-                }
+    let path = PathBuf::from(path(case_dir));
+    for d in fs::read_dir(path).ok()? {
+        let d = d.ok()?;
+        if d.metadata().ok()?.is_file() {
+            if let Ok(name) = d.file_name().into_string() {
+                res.push(format!("{}/{}", case_dir, name));
             }
         }
     }
+
     res.push("empty_file.lox".to_string());
     res.push("precedence.lox".to_string());
 
     Some(res)
 }
 
-#[test]
-fn integration_test() {
-    let cases = get_test_cases();
-    let cases = match cases {
-        None => {
-            println!("No test cases");
-            return;
-        }
-        Some(cases) => cases,
-    };
+fn run(case_dir: &str) {
+    let cases = get_test_cases(case_dir).unwrap_or(Vec::new());
+    if cases.len() == 0 {
+        println!("No test cases in {}", case_dir);
+        return;
+    }
 
+    println!("Testing: {}", case_dir);
     for case in cases {
-        println!("test case: {}", case);
+        println!("Case: {}", case);
 
         let pb = PathBuf::from(path(&case));
         let expected = parse_comments(&pb);
@@ -163,4 +145,64 @@ fn integration_test() {
 
         println!("success");
     }
+}
+
+#[test]
+fn assignment_test() {
+    run("assignment");
+}
+
+#[test]
+fn block_test() {
+    run("block");
+}
+
+#[test]
+fn bool_test() {
+    run("bool");
+}
+
+#[test]
+fn comment_test() {
+    run("comments");
+}
+
+#[test]
+fn expression_test() {
+    run("expressions");
+}
+
+#[test]
+fn logical_operator_test() {
+    run("logical_operator");
+}
+
+#[test]
+fn nil_test() {
+    run("nil");
+}
+
+#[test]
+fn operator_test() {
+    run("operator");
+}
+
+#[test]
+fn print_test() {
+    run("block");
+}
+
+#[test]
+fn scanning_test() {
+    run("scanning");
+}
+
+#[test]
+fn string_test() {
+    run("string");
+}
+
+#[test]
+fn variable_test() {
+    run("variable");
 }
