@@ -45,15 +45,15 @@ impl Parser {
         let token = self.peek();
         match &token.t {
             TokenType::VAR => self.var_decl(),
+            TokenType::FUN => self.func_decl("function"),
             TokenType::CLASS => todo!(),
-            TokenType::FUN => todo!(),
             _ => self.statement(),
         }
     }
 
     // varDecl -> "var" IDENTIFIER ( "=" expression )? ";" ;
     fn var_decl(&mut self) -> Result<Stmt, Error> {
-        self.consume(TokenType::VAR, "Expect keyword VAR")?;
+        self.consume(TokenType::VAR, "Expect keyword 'var'")?;
 
         let name = self.consume(TokenType::IDENTIFIER, "Expect variable name")?;
         let initializer = match self.r#match(&[TokenType::EQUAL]) {
@@ -68,6 +68,43 @@ impl Parser {
         Ok(Stmt::Var { name, initializer })
     }
 
+    // funDecl -> "fun" function ;
+    // function -> IDENTIFIER "(" parameters? ")" block ;
+    // parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
+    // Lox 是动态类型语言，函数形参没有声明类型, 也没有声明返回类型.
+    fn func_decl(&mut self, kind: &str) -> Result<Stmt, Error> {
+        self.consume(TokenType::FUN, "Expect keyword 'fun'")?;
+        let name = self.consume(TokenType::IDENTIFIER, &format!("Expect {} name.", kind))?;
+
+        self.consume(
+            TokenType::LeftParen,
+            &format!("Expect '(' after {} name.", kind),
+        )?;
+        let mut params = Vec::new();
+        if self.peek().t != TokenType::RightParen {
+            params.push(self.consume(TokenType::IDENTIFIER, "Expect parameter name.")?);
+
+            while self.r#match(&[TokenType::COMMA]) {
+                if params.len() >= 255 {
+                    return Err(Error::ParseError(
+                        self.peek().clone(),
+                        "Can't have more than 255 parameters.".to_string(),
+                    ));
+                }
+                params.push(self.consume(TokenType::IDENTIFIER, "Expect parameter name.")?);
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
+
+        let block = self.block()?;
+
+        Ok(Stmt::Function {
+            name,
+            params,
+            body: Box::new(block),
+        })
+    }
+
     // statement -> exprStmt | forStmt | ifStmt | printStmt | returnStmt | whileStmt | block ;
     fn statement(&mut self) -> Result<Stmt, Error> {
         match self.peek().t {
@@ -76,6 +113,7 @@ impl Parser {
             TokenType::IF => self.if_stmt(),
             TokenType::WHILE => self.while_stmt(),
             TokenType::FOR => self.for_stmt(),
+            TokenType::RETURN => self.return_stmt(),
             _ => self.expr_stmt(),
         }
     }
@@ -161,7 +199,7 @@ impl Parser {
 
         let mut body = self.statement()?;
 
-        // 不定义`Stmt:For`, 而是把`for`看成`while`的语法糖, 所以这个函数返回`Stmt::While` or `Stmt::Block`.
+        // 不定义`Stmt:For`, 而是把`for`看成`while`的语法糖, 所以函数返回`Stmt::While` or `Stmt::Block`.
         // for (init; condition; increment) body 等价于
         // init;
         // while (condition) {body; increment;}
@@ -194,6 +232,17 @@ impl Parser {
         }
 
         Ok(body)
+    }
+
+    // returnStmt -> "return" expression? ";" ;
+    fn return_stmt(&mut self) -> Result<Stmt, Error> {
+        let keyword = self.consume(TokenType::RETURN, "Expect keyword 'return'.")?;
+        let value = match self.peek().t {
+            TokenType::SEMICOLON => None,
+            _ => Some(self.expression()?),
+        };
+        self.consume(TokenType::SEMICOLON, "Expect ';' after return value.")?;
+        Ok(Stmt::Return { keyword, value })
     }
 
     // exprStmt -> expression ";" ;
@@ -334,7 +383,6 @@ impl Parser {
     }
 
     // unary -> ( "!" | "-" ) unary | call ;
-    // TODO(cxl): call -> primary
     fn unary(&mut self) -> Result<Expr, Error> {
         if self.r#match(&[TokenType::BANG, TokenType::MINUS]) {
             let op = self.previous();
@@ -344,7 +392,43 @@ impl Parser {
                 right: Box::new(right),
             });
         }
-        self.primary()
+        self.call()
+    }
+
+    // call -> primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
+    // TODO: "." IDENTIFIER
+    fn call(&mut self) -> Result<Expr, Error> {
+        let mut expr = self.primary()?;
+        while self.r#match(&[TokenType::LeftParen]) {
+            expr = self.finish_call(expr)?;
+        }
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Result<Expr, Error> {
+        // 3种情况：
+        // 1. )
+        // 2. arg1)
+        // 3. arg1, arg2, arg3...)
+        let mut args = Vec::new();
+        if self.peek().t != TokenType::RightParen {
+            args.push(self.expression()?);
+        }
+        while self.r#match(&[TokenType::COMMA]) {
+            if args.len() >= 255 {
+                return Err(Error::ParseError(
+                    self.peek().clone(),
+                    "Can't have more than 255 arguments.".to_string(),
+                ));
+            }
+            args.push(self.expression()?);
+        }
+        let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            paren,
+            args,
+        })
     }
 
     // primary -> "true" | "false" | "nil" | "this" | NUMBER | STRING | IDENTIFIER | "(" expression ")"

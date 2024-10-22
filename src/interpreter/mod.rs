@@ -1,16 +1,15 @@
-use std::{cell::RefCell, rc::Rc};
-
-pub use environment::Environment;
-pub use value::Value;
-
 mod environment;
 mod value;
+
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     ast::{Expr, Stmt},
     error::Error,
     token::TokenType,
 };
+use environment::Environment;
+use value::{Clock, FuncValue, Value};
 
 // Interpret the semantics of an ast.
 pub fn interpret(stmts: Vec<Stmt>) {
@@ -18,14 +17,23 @@ pub fn interpret(stmts: Vec<Stmt>) {
     i.interpret(stmts);
 }
 
+#[derive(Clone)]
 struct Interpreter {
-    env: Rc<RefCell<Environment>>,
+    env: Rc<RefCell<Environment>>, // track the current environment: variables, functions, &c.
+    globals: Rc<RefCell<Environment>>, // the global environment, e.g.: native functions.
 }
 
 impl Interpreter {
     fn new() -> Self {
+        let globals = Rc::new(RefCell::new(Environment::new()));
+        // add native function.
+        globals
+            .borrow_mut()
+            .define("clock".to_string(), Value::Callable(Rc::new(Clock {})));
+
         Interpreter {
-            env: Rc::new(RefCell::new(Environment::new())),
+            env: globals.clone(),
+            globals,
         }
     }
 
@@ -38,38 +46,44 @@ impl Interpreter {
         }
     }
 
-    fn execute(&mut self, stmt: &Stmt) -> Result<(), Error> {
+    fn execute(&mut self, stmt: &Stmt) -> Result<(Value, bool), Error> {
         match stmt {
-            Stmt::Expression { expr } => match self.eval(expr) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(e),
-            },
-            Stmt::Print { expr } => match self.eval(expr) {
-                Ok(value) => {
-                    println!("{}", value);
-                    Ok(())
-                }
-                Err(e) => Err(e),
-            },
+            Stmt::Expression { expr } => Ok((self.eval(expr)?, false)),
+            Stmt::Print { expr } => {
+                let v = self.eval(expr)?;
+                println!("{}", v);
+                Ok((v, false))
+            }
             Stmt::Var { name, initializer } => {
                 let value = match initializer {
-                    Some(expr) => match self.eval(expr) {
-                        Ok(value) => value,
-                        Err(e) => return Err(e),
-                    },
+                    Some(expr) => self.eval(expr)?,
                     None => Value::Nil,
                 };
-                self.env.borrow_mut().define(name.lexeme.clone(), value);
-                Ok(())
+                self.env
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), value.clone());
+                Ok((value, false))
             }
             Stmt::Block { stmts } => {
                 let previous = self.env.clone();
-                let mut res = Ok(());
+                let mut res = Ok((Value::Nil, false));
                 self.env = Rc::new(RefCell::new(Environment::from(&self.env)));
                 for stmt in stmts {
-                    if let Err(e) = self.execute(&*stmt) {
-                        res = Err(e);
-                        break;
+                    let stmt_value = self.execute(&*stmt);
+                    match stmt_value {
+                        Err(e) => {
+                            res = Err(e);
+                            break;
+                        }
+                        Ok(v) => {
+                            let val = v.0;
+                            if v.1 {
+                                res = Ok((val, true));
+                                break;
+                            } else {
+                                res = Ok((val, false));
+                            }
+                        }
                     }
                 }
                 self.env = previous;
@@ -81,17 +95,35 @@ impl Interpreter {
                 else_branch,
             } => {
                 if self.eval(condition)?.is_truthy() {
-                    self.execute(&*then_branch)?;
+                    return self.execute(&*then_branch);
                 } else if let Some(else_branch) = else_branch {
-                    self.execute(&*else_branch)?;
+                    return self.execute(&*else_branch);
                 }
-                Ok(())
+                Ok((Value::Nil, false))
             }
             Stmt::While { condition, body } => {
+                let mut res = (Value::Nil, false);
                 while self.eval(condition)?.is_truthy() {
-                    self.execute(&*body)?;
+                    res = self.execute(&*body)?;
                 }
-                Ok(())
+                Ok(res)
+            }
+            Stmt::Return { keyword: _, value } => match value {
+                Some(expr) => Ok((self.eval(expr)?, true)),
+                None => Ok((Value::Nil, true)),
+            },
+            Stmt::Function { name, params, body } => {
+                let func = FuncValue::from(
+                    name.clone(),
+                    params.clone(),
+                    *body.clone(),
+                    self.env.clone(),
+                );
+                self.env
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), Value::Callable(Rc::new(func)));
+
+                Ok((Value::Nil, false))
             }
             _ => todo!(),
         }
@@ -106,6 +138,7 @@ impl Interpreter {
             Expr::Variable { .. } => self.eval_variable(expr),
             Expr::Assign { .. } => self.eval_assign(expr),
             Expr::Logical { .. } => self.eval_logical(expr),
+            Expr::Call { .. } => self.eval_call(expr),
             _ => todo!(),
         }
     }
@@ -167,10 +200,10 @@ impl Interpreter {
                     Ok(res) => return Ok(res),
                     Err(e) => return Err(Error::RuntimeError(op.clone(), e)),
                 },
-                TokenType::GREATER => return Ok(Value::Bool(left > right)),
-                TokenType::GreaterEqual => return Ok(Value::Bool(left >= right)),
-                TokenType::LESS => return Ok(Value::Bool(left < right)),
-                TokenType::LessEqual => return Ok(Value::Bool(left <= right)),
+                TokenType::GREATER => return Ok(left.gt(&right)),
+                TokenType::GreaterEqual => return Ok(left.ge(&right)),
+                TokenType::LESS => return Ok(left.lt(&right)),
+                TokenType::LessEqual => return Ok(left.le(&right)),
                 TokenType::BangEqual => return Ok(Value::Bool(left != right)),
                 TokenType::EqualEqual => return Ok(Value::Bool(left == right)),
                 _ => {
@@ -226,6 +259,44 @@ impl Interpreter {
                 }
             }
             return self.eval(&*right);
+        }
+        unreachable!()
+    }
+
+    fn eval_call(&mut self, expr: &Expr) -> Result<Value, Error> {
+        if let Expr::Call {
+            callee,
+            paren,
+            args,
+        } = expr
+        {
+            let callee = match self.eval(&*callee)? {
+                Value::Callable(callee) => callee.clone(),
+                _ => {
+                    return Err(Error::RuntimeError(
+                        paren.clone(),
+                        "Can only call functions and classes.".to_string(),
+                    ))
+                }
+            };
+
+            if args.len() != callee.arity() {
+                return Err(Error::RuntimeError(
+                    paren.clone(),
+                    format!(
+                        "Expected {} arguments but got {}.",
+                        callee.arity(),
+                        args.len()
+                    ),
+                ));
+            }
+
+            let mut arg_values = Vec::new();
+            for arg in args {
+                arg_values.push(self.eval(arg)?);
+            }
+
+            return callee.call(self.clone(), arg_values);
         }
         unreachable!()
     }

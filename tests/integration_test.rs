@@ -206,3 +206,8 @@ fn string_test() {
 fn variable_test() {
     run("variable");
 }
+
+#[test]
+fn function_test() {
+    run("function");
+}

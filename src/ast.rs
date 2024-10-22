@@ -42,6 +42,7 @@
 use crate::token::Token;
 
 // Expr = a list of tokens
+#[derive(Clone)]
 pub enum Expr {
     // literal value
     Literal {
@@ -106,6 +107,7 @@ pub enum Expr {
 }
 
 // Stmt = a list of Exprs(and Tokens)
+#[derive(Clone)]
 pub enum Stmt {
     Block {
         stmts: Vec<Stmt>,
@@ -121,7 +123,7 @@ pub enum Stmt {
     Function {
         name: Token,
         params: Vec<Token>,
-        body: Vec<Stmt>,
+        body: Box<Stmt>, // Stmt::Block 比用 Vec<Stmt> 方便一点
     },
     If {
         condition: Expr,
@@ -133,7 +135,7 @@ pub enum Stmt {
     },
     Return {
         keyword: Token,
-        value: Expr,
+        value: Option<Expr>,
     },
     Var {
         name: Token,

@@ -1,14 +1,31 @@
 use core::fmt;
-use std::ops::{Add, Div, Mul, Sub};
+use std::{
+    cell::RefCell,
+    ops::{Add, Div, Mul, Sub},
+    rc::Rc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-use crate::token::TokenType;
+use super::{environment::Environment, Interpreter};
+use crate::{
+    ast::Stmt,
+    error::Error,
+    token::{Token, TokenType},
+};
 
-#[derive(Clone, PartialEq, PartialOrd)]
+pub trait Callable {
+    fn call(&self, i: Interpreter, args: Vec<Value>) -> Result<Value, Error>;
+    fn arity(&self) -> usize; // return the number of arguments of function or operation expects.
+    fn to_string(&self) -> String;
+}
+
+#[derive(Clone)]
 pub enum Value {
     Nil,
     Bool(bool),
     Number(f64),
     String(String),
+    Callable(Rc<dyn Callable>),
 }
 
 impl Value {
@@ -20,6 +37,7 @@ impl Value {
             _ => true,
         }
     }
+    /*
     pub fn is_number(&self) -> bool {
         match self {
             Value::Number(_) => true,
@@ -30,6 +48,32 @@ impl Value {
         match self {
             Value::String(_) => true,
             _ => false,
+        }
+    }
+    */
+    pub fn ge(&self, oth: &Self) -> Value {
+        match (self, oth) {
+            (Value::Number(a), Value::Number(b)) => Value::Bool(a >= b),
+            _ => Value::Bool(false),
+        }
+    }
+
+    pub fn gt(&self, oth: &Self) -> Value {
+        match (self, oth) {
+            (Value::Number(a), Value::Number(b)) => Value::Bool(a > b),
+            _ => Value::Bool(false),
+        }
+    }
+    pub fn le(&self, oth: &Self) -> Value {
+        match (self, oth) {
+            (Value::Number(a), Value::Number(b)) => Value::Bool(a <= b),
+            _ => Value::Bool(false),
+        }
+    }
+    pub fn lt(&self, oth: &Self) -> Value {
+        match (self, oth) {
+            (Value::Number(a), Value::Number(b)) => Value::Bool(a < b),
+            _ => Value::Bool(false),
         }
     }
 }
@@ -92,6 +136,36 @@ impl Mul for Value {
     }
 }
 
+impl PartialEq for Value {
+    fn eq(&self, oth: &Self) -> bool {
+        match &self {
+            Value::Nil => match oth {
+                Value::Nil => true,
+                _ => false,
+            },
+            Value::String(s) => {
+                if let Value::String(oth) = oth {
+                    return s.eq(oth);
+                }
+                false
+            }
+            Value::Bool(b) => {
+                if let Value::Bool(oth) = oth {
+                    return b.eq(oth);
+                }
+                false
+            }
+            Value::Number(num) => {
+                if let Value::Number(oth) = oth {
+                    return num.eq(oth);
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -99,6 +173,71 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{}", b),
             Value::Number(num) => write!(f, "{}", num),
             Value::String(s) => write!(f, "{}", s),
+            Value::Callable(c) => write!(f, "{}", c.to_string()),
         }
+    }
+}
+
+pub struct FuncValue {
+    name: Token,
+    params: Vec<Token>,
+    body: Stmt,                        // Stmt::Block
+    closure: Rc<RefCell<Environment>>, // the env when the function is declared, not when it's called.
+}
+
+impl FuncValue {
+    pub fn from(
+        name: Token,
+        params: Vec<Token>,
+        body: Stmt,
+        closure: Rc<RefCell<Environment>>,
+    ) -> FuncValue {
+        FuncValue {
+            name,
+            params,
+            body,
+            closure,
+        }
+    }
+}
+
+impl Callable for FuncValue {
+    fn call(&self, mut i: Interpreter, args: Vec<Value>) -> Result<Value, Error> {
+        let previous = i.env.clone();
+        i.env = Rc::new(RefCell::new(Environment::from(&self.closure)));
+        for idx in 0..self.params.len() {
+            i.env
+                .borrow_mut()
+                .define(self.params[idx].lexeme.clone(), args[idx].clone());
+        }
+        let res = i.execute(&self.body)?;
+        i.env = previous;
+        // Lox 定义一个函数没有返回值时，默认返回 nil.
+        Ok(res.0)
+    }
+    fn arity(&self) -> usize {
+        self.params.len()
+    }
+    fn to_string(&self) -> String {
+        format!("<fn {}>", self.name.lexeme)
+    }
+}
+
+pub struct Clock {}
+
+impl Callable for Clock {
+    fn call(&self, _i: Interpreter, _args: Vec<Value>) -> Result<Value, Error> {
+        Ok(Value::Number(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64(),
+        ))
+    }
+    fn arity(&self) -> usize {
+        0
+    }
+    fn to_string(&self) -> String {
+        String::from("<native fn>")
     }
 }
