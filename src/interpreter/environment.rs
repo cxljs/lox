@@ -52,6 +52,26 @@ impl Environment {
         ))
     }
 
+    fn ancestor(&self, distance: usize) -> Option<Rc<RefCell<Environment>>> {
+        let mut anc = None;
+        for _ in 1..distance {
+            if let Some(outer) = &self.outer_layer {
+                anc = Some(outer.clone());
+            }
+        }
+        anc
+    }
+
+    pub fn get_at(&self, distance: usize, name: &String) -> Result<Value, Error> {
+        if distance == 0 {
+            return Ok(self.cur.get(name).unwrap().clone());
+        }
+        if let Some(ancestor) = self.ancestor(distance) {
+            return Ok(ancestor.borrow().cur.get(name).unwrap().clone());
+        }
+        unreachable!()
+    }
+
     pub fn assign(&mut self, name: Token, value: Value) -> Result<(), Error> {
         if self.cur.contains_key(&name.lexeme) {
             self.cur.insert(name.lexeme, value);
@@ -66,5 +86,14 @@ impl Environment {
             name.clone(),
             format!("Undefined variable '{}'.", &name.lexeme),
         ))
+    }
+
+    pub fn assign_at(&mut self, distance: usize, name: Token, value: Value) -> Result<(), Error> {
+        if distance == 0 {
+            self.cur.insert(name.lexeme, value);
+        } else if let Some(ancestor) = self.ancestor(distance) {
+            ancestor.borrow_mut().cur.insert(name.lexeme, value);
+        }
+        Ok(())
     }
 }

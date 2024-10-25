@@ -5,6 +5,7 @@ pub mod token;
 mod ast;
 mod error;
 mod parser;
+mod resolver;
 
 use parser::Parser;
 
@@ -19,7 +20,12 @@ pub fn exec(src: String) {
         Err(_) => return, // the errors have been print in the `parser::parse()`
     };
 
-    interpreter::interpret(stmts);
+    let locations = match resolver::resolve_variable(&stmts) {
+        Some(locations) => locations,
+        None => return,
+    };
+
+    interpreter::interpret(stmts, locations);
 }
 
 #[cfg(test)]

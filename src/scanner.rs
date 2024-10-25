@@ -1,5 +1,5 @@
 use crate::error;
-use crate::token::{self, Token, TokenType};
+use crate::token::{self, Token, TokenType, F64};
 
 // the Lox language defines the lexical grammar:
 //   NUMBER -> DIGIT+ ("." DIGIT+)? ;
@@ -187,7 +187,7 @@ impl Scanner {
             .unwrap()
             .parse::<f64>()
             .unwrap();
-        self.add_token(TokenType::NUMBER { literal: num });
+        self.add_token(TokenType::NUMBER { literal: F64(num) });
     }
 
     fn identifier(&mut self) {

@@ -1,7 +1,7 @@
 use crate::{
     ast::{Expr, Stmt},
     error::Error,
-    token::{self, Token, TokenType},
+    token::{self, Token, TokenType, F64},
 };
 
 // the Lox language defines the syntactic grammar (https://craftinginterpreters.com/appendix-i.html).
@@ -96,13 +96,12 @@ impl Parser {
         }
         self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
 
-        let block = self.block()?;
+        let body = match self.block()? {
+            Stmt::Block { stmts } => stmts,
+            _ => Vec::new(),
+        };
 
-        Ok(Stmt::Function {
-            name,
-            params,
-            body: Box::new(block),
-        })
+        Ok(Stmt::Function { name, params, body })
     }
 
     // statement -> exprStmt | forStmt | ifStmt | printStmt | returnStmt | whileStmt | block ;
@@ -438,7 +437,7 @@ impl Parser {
             TokenType::TRUE,
             TokenType::FALSE,
             TokenType::NIL,
-            TokenType::NUMBER { literal: 0.0 },
+            TokenType::NUMBER { literal: F64(0.0) },
             TokenType::STRING {
                 literal: "".to_string(),
             },

@@ -85,7 +85,7 @@ impl TryFrom<&TokenType> for Value {
             TokenType::NIL => Ok(Value::Nil),
             TokenType::FALSE => Ok(Value::Bool(false)),
             TokenType::TRUE => Ok(Value::Bool(true)),
-            TokenType::NUMBER { literal } => Ok(Value::Number(*literal)),
+            TokenType::NUMBER { literal } => Ok(Value::Number(literal.0)),
             TokenType::STRING { literal } => Ok(Value::String(literal.clone())),
             _ => Err("cast TokenType to Value error".to_string()),
         }
@@ -181,7 +181,7 @@ impl fmt::Display for Value {
 pub struct FuncValue {
     name: Token,
     params: Vec<Token>,
-    body: Stmt,                        // Stmt::Block
+    body: Vec<Stmt>,                   // Stmt::Block
     closure: Rc<RefCell<Environment>>, // the env when the function is declared, not when it's called.
 }
 
@@ -189,7 +189,7 @@ impl FuncValue {
     pub fn from(
         name: Token,
         params: Vec<Token>,
-        body: Stmt,
+        body: Vec<Stmt>,
         closure: Rc<RefCell<Environment>>,
     ) -> FuncValue {
         FuncValue {
@@ -210,7 +210,7 @@ impl Callable for FuncValue {
                 .borrow_mut()
                 .define(self.params[idx].lexeme.clone(), args[idx].clone());
         }
-        let res = i.execute(&self.body)?;
+        let res = i.execute_stmts(&self.body)?;
         i.env = previous;
         // Lox 定义一个函数没有返回值时，默认返回 nil.
         Ok(res.0)

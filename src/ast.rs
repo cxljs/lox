@@ -42,7 +42,7 @@
 use crate::token::Token;
 
 // Expr = a list of tokens
-#[derive(Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Expr {
     // literal value
     Literal {
@@ -107,7 +107,7 @@ pub enum Expr {
 }
 
 // Stmt = a list of Exprs(and Tokens)
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Stmt {
     Block {
         stmts: Vec<Stmt>,
@@ -123,7 +123,7 @@ pub enum Stmt {
     Function {
         name: Token,
         params: Vec<Token>,
-        body: Box<Stmt>, // Stmt::Block 比用 Vec<Stmt> 方便一点
+        body: Vec<Stmt>, // Vec<Stmt> 比 Stmt::Block 方便一点, 使用 Stmt::Block 运行时会创建2层 env
     },
     If {
         condition: Expr,

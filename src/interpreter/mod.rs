@@ -1,19 +1,19 @@
 mod environment;
 mod value;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{Expr, Stmt},
     error::Error,
-    token::TokenType,
+    token::{Token, TokenType},
 };
 use environment::Environment;
 use value::{Clock, FuncValue, Value};
 
 // Interpret the semantics of an ast.
-pub fn interpret(stmts: Vec<Stmt>) {
-    let mut i = Interpreter::new();
+pub fn interpret(stmts: Vec<Stmt>, locations: HashMap<Expr, usize>) {
+    let mut i = Interpreter::new(locations);
     i.interpret(stmts);
 }
 
@@ -21,10 +21,11 @@ pub fn interpret(stmts: Vec<Stmt>) {
 struct Interpreter {
     env: Rc<RefCell<Environment>>, // track the current environment: variables, functions, &c.
     globals: Rc<RefCell<Environment>>, // the global environment, e.g.: native functions.
+    locations: Rc<HashMap<Expr, usize>>,
 }
 
 impl Interpreter {
-    fn new() -> Self {
+    fn new(locations: HashMap<Expr, usize>) -> Self {
         let globals = Rc::new(RefCell::new(Environment::new()));
         // add native function.
         globals
@@ -34,6 +35,7 @@ impl Interpreter {
         Interpreter {
             env: globals.clone(),
             globals,
+            locations: Rc::new(locations),
         }
     }
 
@@ -44,6 +46,30 @@ impl Interpreter {
                 eprintln!("{}", e);
             }
         }
+    }
+
+    fn execute_stmts(&mut self, stmts: &Vec<Stmt>) -> Result<(Value, bool), Error> {
+        // 和 execute `Stmt::Block` 区别: `Stmt::Block`会新建一层运行环境
+        let mut res = Ok((Value::Nil, false));
+        for stmt in stmts {
+            let stmt_value = self.execute(stmt);
+            match stmt_value {
+                Err(e) => {
+                    res = Err(e);
+                    break;
+                }
+                Ok(v) => {
+                    let val = v.0;
+                    if v.1 {
+                        res = Ok((val, true));
+                        break;
+                    } else {
+                        res = Ok((val, false));
+                    }
+                }
+            }
+        }
+        res
     }
 
     fn execute(&mut self, stmt: &Stmt) -> Result<(Value, bool), Error> {
@@ -66,26 +92,8 @@ impl Interpreter {
             }
             Stmt::Block { stmts } => {
                 let previous = self.env.clone();
-                let mut res = Ok((Value::Nil, false));
                 self.env = Rc::new(RefCell::new(Environment::from(&self.env)));
-                for stmt in stmts {
-                    let stmt_value = self.execute(&*stmt);
-                    match stmt_value {
-                        Err(e) => {
-                            res = Err(e);
-                            break;
-                        }
-                        Ok(v) => {
-                            let val = v.0;
-                            if v.1 {
-                                res = Ok((val, true));
-                                break;
-                            } else {
-                                res = Ok((val, false));
-                            }
-                        }
-                    }
-                }
+                let res = self.execute_stmts(stmts);
                 self.env = previous;
                 res
             }
@@ -95,16 +103,16 @@ impl Interpreter {
                 else_branch,
             } => {
                 if self.eval(condition)?.is_truthy() {
-                    return self.execute(&*then_branch);
+                    return self.execute(then_branch);
                 } else if let Some(else_branch) = else_branch {
-                    return self.execute(&*else_branch);
+                    return self.execute(else_branch);
                 }
                 Ok((Value::Nil, false))
             }
             Stmt::While { condition, body } => {
                 let mut res = (Value::Nil, false);
                 while self.eval(condition)?.is_truthy() {
-                    res = self.execute(&*body)?;
+                    res = self.execute(body)?;
                 }
                 Ok(res)
             }
@@ -116,13 +124,12 @@ impl Interpreter {
                 let func = FuncValue::from(
                     name.clone(),
                     params.clone(),
-                    *body.clone(),
+                    (*body.clone()).to_vec(),
                     self.env.clone(),
                 );
                 self.env
                     .borrow_mut()
                     .define(name.lexeme.clone(), Value::Callable(Rc::new(func)));
-
                 Ok((Value::Nil, false))
             }
             _ => todo!(),
@@ -132,7 +139,7 @@ impl Interpreter {
     fn eval(&mut self, expr: &Expr) -> Result<Value, Error> {
         match expr {
             Expr::Literal { .. } => self.eval_literal(expr),
-            Expr::Grouping { expression } => self.eval(&*expression),
+            Expr::Grouping { expression } => self.eval(expression),
             Expr::Unary { .. } => self.eval_unary(expr),
             Expr::Binary { .. } => self.eval_binary(expr),
             Expr::Variable { .. } => self.eval_variable(expr),
@@ -149,7 +156,7 @@ impl Interpreter {
                 TokenType::TRUE => return Ok(Value::Bool(true)),
                 TokenType::FALSE => return Ok(Value::Bool(false)),
                 TokenType::NIL => return Ok(Value::Nil),
-                TokenType::NUMBER { literal } => return Ok(Value::Number(*literal)),
+                TokenType::NUMBER { literal } => return Ok(Value::Number(literal.0)),
                 TokenType::STRING { literal } => return Ok(Value::String(literal.clone())),
                 _ => {
                     return Err(Error::RuntimeError(
@@ -164,7 +171,7 @@ impl Interpreter {
 
     fn eval_unary(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Unary { op, right } = expr {
-            let right = self.eval(&*right)?;
+            let right = self.eval(right)?;
             match (&op.t, &right) {
                 (TokenType::MINUS, Value::Number(num)) => return Ok(Value::Number(-num)),
                 (TokenType::BANG, _) => return Ok(Value::Bool(!right.is_truthy())),
@@ -181,8 +188,8 @@ impl Interpreter {
 
     fn eval_binary(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Binary { left, op, right } = expr {
-            let left = self.eval(&*left)?;
-            let right = self.eval(&*right)?;
+            let left = self.eval(left)?;
+            let right = self.eval(right)?;
             match &op.t {
                 TokenType::MINUS => match left - right {
                     Ok(res) => return Ok(res),
@@ -224,15 +231,32 @@ impl Interpreter {
 
     fn eval_variable(&self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Variable { name } = expr {
-            return self.env.borrow_mut().get(&name);
+            return self.lookup_variable(name, expr);
         }
         unreachable!()
     }
 
+    fn lookup_variable(&self, name: &Token, expr: &Expr) -> Result<Value, Error> {
+        match self.locations.get(expr) {
+            Some(distance) => self.env.borrow().get_at(*distance, &name.lexeme),
+            None => self.globals.borrow().get(name),
+        }
+    }
+
     fn eval_assign(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Assign { name, value } = expr {
-            let value = self.eval(&*value)?;
-            self.env.borrow_mut().assign(name.clone(), value.clone())?;
+            let value = self.eval(value)?;
+            match self.locations.get(expr) {
+                Some(distance) => {
+                    self.env
+                        .borrow_mut()
+                        .assign_at(*distance, name.clone(), value.clone())?
+                }
+                None => self
+                    .globals
+                    .borrow_mut()
+                    .assign(name.clone(), value.clone())?,
+            }
             return Ok(value);
         }
         unreachable!()
@@ -247,7 +271,7 @@ impl Interpreter {
     //   Lox: print "yes"
     fn eval_logical(&mut self, expr: &Expr) -> Result<Value, Error> {
         if let Expr::Logical { left, op, right } = expr {
-            let left = self.eval(&*left)?;
+            let left = self.eval(left)?;
             if op.t == TokenType::OR {
                 if left.is_truthy() {
                     return Ok(left);
@@ -258,7 +282,7 @@ impl Interpreter {
                     return Ok(left);
                 }
             }
-            return self.eval(&*right);
+            return self.eval(right);
         }
         unreachable!()
     }
@@ -270,7 +294,7 @@ impl Interpreter {
             args,
         } = expr
         {
-            let callee = match self.eval(&*callee)? {
+            let callee = match self.eval(callee)? {
                 Value::Callable(callee) => callee.clone(),
                 _ => {
                     return Err(Error::RuntimeError(

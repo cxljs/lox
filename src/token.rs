@@ -1,6 +1,24 @@
 use core::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
+// Rust f64 不能直接实现 trait Eq & Hash, 所以封装一下.
+#[derive(Debug, Clone)]
+pub struct F64(pub f64);
+
+impl std::cmp::PartialEq for F64 {
+    fn eq(&self, oth: &Self) -> bool {
+        self.0 == oth.0
+    }
+}
+
+impl std::cmp::Eq for F64 {}
+
+impl std::hash::Hash for F64 {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.0 as u64).hash(state);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,  // (
@@ -29,7 +47,7 @@ pub enum TokenType {
     // bool, nil 也能当字面量处理，这里把它们看成关键字
     IDENTIFIER,
     STRING { literal: String },
-    NUMBER { literal: f64 }, // all numbers in Lox are floating point at runtime.
+    NUMBER { literal: F64 }, // all numbers in Lox are floating point at runtime.
 
     // Keywords.
     AND,
@@ -76,7 +94,7 @@ impl TokenType {
 }
 
 // a token consists of a lexeme and its metadata.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct Token {
     pub t: TokenType,
     pub lexeme: String,
